@@ -1,9 +1,9 @@
 /*
  * OpenVINS: An Open Platform for Visual-Inertial Research
- * Copyright (C) 2021 Patrick Geneva
- * Copyright (C) 2021 Guoquan Huang
- * Copyright (C) 2021 OpenVINS Contributors
+ * Copyright (C) 2019 Patrick Geneva
  * Copyright (C) 2019 Kevin Eckenhoff
+ * Copyright (C) 2019 Guoquan Huang
+ * Copyright (C) 2019 OpenVINS Contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,51 +18,71 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 #ifndef OV_TYPE_TYPE_VEC_H
 #define OV_TYPE_TYPE_VEC_H
 
+
 #include "Type.h"
+
 
 namespace ov_type {
 
-/**
- * @brief Derived Type class that implements vector variables
- */
-class Vec : public Type {
+    /**
+     * @brief Derived Type class that implements vector variables
+     */
+    class Vec : public Type {
 
-public:
-  /**
-   * @brief Default constructor for Vec
-   * @param dim Size of the vector (will be same as error state)
-   */
-  Vec(int dim) : Type(dim) {
-    _value = Eigen::VectorXd::Zero(dim);
-    _fej = Eigen::VectorXd::Zero(dim);
-  }
+    public:
 
-  ~Vec() {}
+        /**
+         * @brief Default constructor for Vec
+         * @param dim Size of the vector (will be same as error state)
+         */
+        Vec(int dim) : Type(dim) {
+            _value = Eigen::VectorXd::Zero(dim);
+            _fej = Eigen::VectorXd::Zero(dim);
+        }
 
-  /**
-   * @brief Implements the update operation through standard vector addition
-   * @param dx Additive error state correction
-   */
-  void update(const Eigen::VectorXd &dx) override {
-    assert(dx.rows() == _size);
-    set_value(_value + dx);
-  }
+        ~Vec() {}
 
-  /**
-   * @brief Performs all the cloning
-   */
-  std::shared_ptr<Type> clone() override {
-    auto Clone = std::shared_ptr<Type>(new Vec(_size));
-    Clone->set_value(value());
-    Clone->set_fej(fej());
-    return Clone;
-  }
-};
+        /**
+         * @brief Implements the update operation through standard vector addition
+         * @param dx Additive error state correction
+         */
+        void update(const Eigen::VectorXd& dx) override {
+            assert(dx.rows() == _size);
+            set_value(_value + dx);
+        }
 
-} // namespace ov_type
+        /**
+         * @brief Performs all the cloning
+         */
+        std::shared_ptr<Type> clone() override {
+            auto Clone = std::shared_ptr<Type>(new Vec(_size));
+            Clone->set_value(value());
+            Clone->set_fej(fej());
+            return Clone;
+        }
 
-#endif // OV_TYPE_TYPE_VEC_H
+        /**
+         * @brief Performs the cloning of component
+         */
+        std::shared_ptr<Type> clone_component(int clone_size) override {
+            assert(clone_size >= 0 && clone_size < _size);
+            if(clone_size > 0){
+                auto Clone = std::shared_ptr<Type>(new Vec(clone_size));
+                Clone->set_value(value().block(0,0,clone_size,1));
+                Clone->set_fej(fej().block(0,0,clone_size,1));
+                return Clone;
+            }else{
+                return clone();
+            }
+
+        }
+
+
+    };
+
+}
+
+#endif //OV_TYPE_TYPE_VEC_H

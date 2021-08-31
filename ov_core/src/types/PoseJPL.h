@@ -1,9 +1,9 @@
 /*
  * OpenVINS: An Open Platform for Visual-Inertial Research
- * Copyright (C) 2021 Patrick Geneva
- * Copyright (C) 2021 Guoquan Huang
- * Copyright (C) 2021 OpenVINS Contributors
+ * Copyright (C) 2019 Patrick Geneva
  * Copyright (C) 2019 Kevin Eckenhoff
+ * Copyright (C) 2019 Guoquan Huang
+ * Copyright (C) 2019 OpenVINS Contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,177 +18,231 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 #ifndef OV_TYPE_TYPE_POSEJPL_H
 #define OV_TYPE_TYPE_POSEJPL_H
 
-#include "JPLQuat.h"
+#include <memory>
+
 #include "Vec.h"
+#include "JPLQuat.h"
 #include "utils/quat_ops.h"
+
 
 namespace ov_type {
 
-/**
- * @brief Derived Type class that implements a 6 d.o.f pose
- *
- * Internally we use a JPLQuat quaternion representation for the orientation and 3D Vec position.
- * Please see JPLQuat for details on its update procedure and its left multiplicative error.
- */
-class PoseJPL : public Type {
 
-public:
-  PoseJPL() : Type(6) {
+    /**
+     * @brief Derived Type class that implements a 6 d.o.f pose
+     *
+     * Internally we use a JPLQuat quaternion representation for the orientation and 3D Vec position.
+     * Please see JPLQuat for details on its update procedure and its left multiplicative error.
+     */
+    class PoseJPL : public Type {
 
-    // Initialize subvariables
-    _q = std::shared_ptr<JPLQuat>(new JPLQuat());
-    _p = std::shared_ptr<Vec>(new Vec(3));
+    public:
 
-    // Set our default state value
-    Eigen::Matrix<double, 7, 1> pose0;
-    pose0.setZero();
-    pose0(3) = 1.0;
-    set_value_internal(pose0);
-    set_fej_internal(pose0);
-  }
+        PoseJPL() : Type(6) {
 
-  ~PoseJPL() {}
+            // Initialize subvariables
+            _q = std::make_shared<JPLQuat>();
+            _p = std::make_shared<Vec>(3);
 
-  /**
-   * @brief Sets id used to track location of variable in the filter covariance
-   *
-   * Note that we update the sub-variables also.
-   *
-   * @param new_id entry in filter covariance corresponding to this variable
-   */
-  void set_local_id(int new_id) override {
-    _id = new_id;
-    _q->set_local_id(new_id);
-    _p->set_local_id(new_id + ((new_id != -1) ? _q->size() : 0));
-  }
+            // Set our default state value
+            Eigen::Matrix<double, 7, 1> pose0;
+            pose0.setZero();
+            pose0(3) = 1.0;
+            set_value_internal(pose0);
+            set_fej_internal(pose0);
 
-  /**
-   * @brief Update q and p using a the JPLQuat update for orientation and vector update for position
-   *
-   * @param dx Correction vector (orientation then position)
-   */
-  void update(const Eigen::VectorXd &dx) override {
+        }
 
-    assert(dx.rows() == _size);
+        ~PoseJPL() { }
 
-    Eigen::Matrix<double, 7, 1> newX = _value;
+        /**
+         * @brief Sets id used to track location of variable in the filter covariance
+         *
+         * Note that we update the sub-variables also.
+         *
+         * @param new_id entry in filter covariance corresponding to this variable
+         */
+        void set_local_id(int new_id) override {
+            _id = new_id;
+            _q->set_local_id(new_id);
+            _p->set_local_id(new_id+((new_id!=-1)? _q->size() : 0));
+        }
 
-    Eigen::Matrix<double, 4, 1> dq;
-    dq << .5 * dx.block(0, 0, 3, 1), 1.0;
-    dq = ov_core::quatnorm(dq);
+        /**
+         * @brief Update q and p using a the JPLQuat update for orientation and vector update for position
+         *
+         * @param dx Correction vector (orientation then position)
+         */
+        void update(const Eigen::VectorXd& dx) override {
 
-    // Update orientation
-    newX.block(0, 0, 4, 1) = ov_core::quat_multiply(dq, quat());
+            assert(dx.rows() == _size);
 
-    // Update position
-    newX.block(4, 0, 3, 1) += dx.block(3, 0, 3, 1);
+            Eigen::Matrix<double, 7, 1> newX = _value;
 
-    set_value(newX);
-  }
+            Eigen::Matrix<double, 4, 1> dq;
+            dq << .5 * dx.block(0, 0, 3, 1), 1.0;
+            dq = ov_core::quatnorm(dq);
 
-  /**
-   * @brief Sets the value of the estimate
-   * @param new_value New value we should set
-   */
-  void set_value(const Eigen::MatrixXd &new_value) override { set_value_internal(new_value); }
+            //Update orientation
+            newX.block(0, 0, 4, 1) = ov_core::quat_multiply(dq, quat());
 
-  /**
-   * @brief Sets the value of the first estimate
-   * @param new_value New value we should set
-   */
-  void set_fej(const Eigen::MatrixXd &new_value) override { set_fej_internal(new_value); }
+            //Update position
+            newX.block(4, 0, 3, 1) += dx.block(3, 0, 3, 1);
 
-  std::shared_ptr<Type> clone() override {
-    auto Clone = std::shared_ptr<PoseJPL>(new PoseJPL());
-    Clone->set_value(value());
-    Clone->set_fej(fej());
-    return Clone;
-  }
+            set_value(newX);
 
-  std::shared_ptr<Type> check_if_subvariable(const std::shared_ptr<Type> check) override {
-    if (check == _q) {
-      return _q;
-    } else if (check == _p) {
-      return _p;
-    }
-    return nullptr;
-  }
+        }
 
-  /// Rotation access
-  Eigen::Matrix<double, 3, 3> Rot() const { return _q->Rot(); }
+        /**
+         * @brief Sets the value of the estimate
+         * @param new_value New value we should set
+         */
+        void set_value(const Eigen::MatrixXd& new_value) override {
+            set_value_internal(new_value);
+        }
 
-  /// FEJ Rotation access
-  Eigen::Matrix<double, 3, 3> Rot_fej() const {
-    return _q->Rot_fej();
-    ;
-  }
+        /**
+         * @brief Sets the value of the first estimate
+         * @param new_value New value we should set
+         */
+        void set_fej(const Eigen::MatrixXd& new_value) override {
+            set_fej_internal(new_value);
+        }
 
-  /// Rotation access as quaternion
-  Eigen::Matrix<double, 4, 1> quat() const { return _q->value(); }
+        std::shared_ptr<Type> clone() override {
+            auto Clone = std::make_shared<PoseJPL>();
+            Clone->set_value(value());
+            Clone->set_fej(fej());
+            return Clone;
+        }
 
-  /// FEJ Rotation access as quaternion
-  Eigen::Matrix<double, 4, 1> quat_fej() const { return _q->fej(); }
+        std::shared_ptr<Type> clone_component(int clone_size) override {
+            assert(clone_size == 0 || clone_size == 3 || clone_size == 6);
+            if(clone_size == 3){
+                auto Clone = std::make_shared<JPLQuat>();
+                Clone->set_value(value().block(0,0,clone_size+1,1));
+                Clone->set_fej(fej().block(0,0,clone_size+1,1));
+                return Clone;
+            }else {
+                return clone();
+            }
 
-  /// Position access
-  Eigen::Matrix<double, 3, 1> pos() const { return _p->value(); }
+        }
 
-  // FEJ position access
-  Eigen::Matrix<double, 3, 1> pos_fej() const { return _p->fej(); }
+        std::shared_ptr<Type> check_if_subvariable(const std::shared_ptr<Type> check) override {
+            if (check == _q) {
+                return _q;
+            } else if (check == _p) {
+                return _p;
+            }
+            return nullptr;
+        }
 
-  // Quaternion type access
-  std::shared_ptr<JPLQuat> q() { return _q; }
+        /// Rotation access
+        Eigen::Matrix<double, 3, 3> Rot() const {
+            return _q->Rot();
+        }
 
-  // Position type access
-  std::shared_ptr<Vec> p() { return _p; }
+        /// FEJ Rotation access
+        Eigen::Matrix<double, 3, 3> Rot_fej() const {
+            return _q->Rot_fej();;
+        }
 
-protected:
-  /// Subvariable containing orientation
-  std::shared_ptr<JPLQuat> _q;
+        /// Rotation access as quaternion
+        Eigen::Matrix<double, 4, 1> quat() const {
+            return _q->value();
+        }
 
-  /// Subvariable containing position
-  std::shared_ptr<Vec> _p;
+        /// FEJ Rotation access as quaternion
+        Eigen::Matrix<double, 4, 1> quat_fej() const {
+            return _q->fej();
+        }
 
-  /**
-   * @brief Sets the value of the estimate
-   * @param new_value New value we should set
-   */
-  void set_value_internal(const Eigen::MatrixXd &new_value) {
+        /// Position access
+        Eigen::Matrix<double, 3, 1> pos() const {
+            return _p->value();
+        }
 
-    assert(new_value.rows() == 7);
-    assert(new_value.cols() == 1);
+        // FEJ position access
+        Eigen::Matrix<double, 3, 1> pos_fej() const {
+            return _p->fej();
+        }
 
-    // Set orientation value
-    _q->set_value(new_value.block(0, 0, 4, 1));
+        // Pose access
+        Eigen::Matrix<double, 4, 4> pose_se3(bool rot_flip) const {
+            Eigen::Matrix<double, 4, 4> pose = Eigen::Matrix<double,4,4>::Identity();
+            pose.block<3,3>(0,0) = (rot_flip? Rot().transpose() : Rot());
+            pose.block<3,1>(0,3) = pos();
+            return pose;
+        }
 
-    // Set position value
-    _p->set_value(new_value.block(4, 0, 3, 1));
+        // Pose fej access
+        Eigen::Matrix<double, 4, 4> pose_se3_fej(bool rot_flip) const {
+            Eigen::Matrix<double, 4, 4> pose_fej = Eigen::Matrix<double,4,4>::Identity();
+            pose_fej.block<3,3>(0,0) = (rot_flip? Rot_fej().transpose() : Rot_fej());
+            pose_fej.block<3,1>(0,3) = pos_fej();
+            return pose_fej;
+        }
 
-    _value = new_value;
-  }
+        // Quaternion type access
+        std::shared_ptr<JPLQuat> q() {
+            return _q;
+        }
 
-  /**
-   * @brief Sets the value of the first estimate
-   * @param new_value New value we should set
-   */
-  void set_fej_internal(const Eigen::MatrixXd &new_value) {
+        // Position type access
+        std::shared_ptr<Vec> p() {
+            return _p;
+        }
 
-    assert(new_value.rows() == 7);
-    assert(new_value.cols() == 1);
+    protected:
 
-    // Set orientation fej value
-    _q->set_fej(new_value.block(0, 0, 4, 1));
+        /// Subvariable containing orientation
+        std::shared_ptr<JPLQuat> _q;
 
-    // Set position fej value
-    _p->set_fej(new_value.block(4, 0, 3, 1));
+        /// Subvariable containing position
+        std::shared_ptr<Vec> _p;
 
-    _fej = new_value;
-  }
-};
+        /**
+         * @brief Sets the value of the estimate
+         * @param new_value New value we should set
+         */
+        void set_value_internal(const Eigen::MatrixXd& new_value) {
 
-} // namespace ov_type
+            assert(new_value.rows() == 7);
+            assert(new_value.cols() == 1);
 
-#endif // OV_TYPE_TYPE_POSEJPL_H
+            //Set orientation value
+            _q->set_value(new_value.block(0, 0, 4, 1));
+
+            //Set position value
+            _p->set_value(new_value.block(4, 0, 3, 1));
+
+            _value = new_value;
+        }
+
+        /**
+         * @brief Sets the value of the first estimate
+         * @param new_value New value we should set
+         */
+        void set_fej_internal(const Eigen::MatrixXd& new_value) {
+
+            assert(new_value.rows() == 7);
+            assert(new_value.cols() == 1);
+
+            //Set orientation fej value
+            _q->set_fej(new_value.block(0, 0, 4, 1));
+
+            //Set position fej value
+            _p->set_fej(new_value.block(4, 0, 3, 1));
+
+            _fej = new_value;
+        }
+
+    };
+
+}
+
+#endif //OV_TYPE_TYPE_POSEJPL_H
