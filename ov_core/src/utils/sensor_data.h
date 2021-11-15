@@ -66,6 +66,15 @@ struct CameraData {
   /// Tracking masks for each camera we have
   std::vector<cv::Mat> masks;
 
+  /// tracked features from device such as OAK-D directly
+  struct feature {
+	size_t id;
+	double x;
+	double y;
+  };
+
+  std::vector<std::vector<feature>> device_features;
+
   /// Sort function to allow for using of STL containers
   bool operator<(const CameraData &other) const {
     if (timestamp == other.timestamp) {
