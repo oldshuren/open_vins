@@ -87,6 +87,7 @@ add_library(ov_core_lib SHARED
         src/track/TrackAruco.cpp
         src/track/TrackDescriptor.cpp
         src/track/TrackKLT.cpp
+        src/track/TrackDev.cpp
         src/track/TrackSIM.cpp
         src/types/Landmark.cpp
         src/feat/Feature.cpp
@@ -106,5 +107,3 @@ endif()
 
 add_executable(test_webcam src/test_webcam.cpp)
 target_link_libraries(test_webcam ov_core_lib ${thirdparty_libraries})
-
-
